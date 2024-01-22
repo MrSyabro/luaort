@@ -44,9 +44,23 @@ static int l_createsessionoptions (lua_State *L) {
     return 1;
 }
 
+static int l_creatememoryinfo (lua_State *L) {
+    OrtMemoryInfo* memory_info;
+    ORT_LUA_ERROR(L, g_ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &memory_info));
+
+    OrtMemoryInfo** luaptr = (OrtMemoryInfo**)lua_newuserdata(L, sizeof(OrtMemoryInfo*));
+    *luaptr = memory_info;
+
+    luaL_getmetatable(L, "Ort.MemoryInfo");    
+    lua_setmetatable(L, -2);
+
+    return 1;
+}
+
 static const struct luaL_Reg luaort [] = {
     {"CreateEnv", l_createenv},
     {"CreateSessionOptions", l_createsessionoptions},
+    {"CreateMemoryInfo", l_creatememoryinfo},
     {NULL, NULL}
 };
 
@@ -136,6 +150,96 @@ static const struct luaL_Reg sessionoptions_m [] = {
 };
 
 
+// Session
+
+static int l_session_GetInputCount(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
+    
+    size_t count;
+    g_ort->SessionGetInputCount(session, &count);
+
+    lua_pushnumber(L, (int)count);
+    return 1;
+}
+
+static int l_session_GetOutputCount(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
+    
+    size_t count;
+    g_ort->SessionGetOutputCount(session, &count);
+
+    lua_pushnumber(L, (int)count);
+    return 1;
+}
+
+static int l_session_release(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
+
+    g_ort->ReleaseSession(session);
+
+    return 0;
+}
+
+static const struct luaL_Reg session_m [] = {
+    {"GetInputCount", l_session_GetInputCount},
+    {"GetOutputCount", l_session_GetOutputCount},
+    {"__gc", l_session_release},
+    {NULL, NULL}
+};
+
+
+// MemoryInfo
+
+static int l_memoryinfo_CreateTensorWithDataAsOrtValue (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtMemoryInfo* session = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
+
+    /*OrtValue* input_tensor = NULL;
+    ORT_LUA_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, model_input, model_input_len, input_shape,
+                                                            input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                                            &input_tensor));*/
+    //luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
+
+    return 1;
+}
+
+static int l_memoryinfo_release (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtMemoryInfo* memory_info = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
+
+    g_ort->ReleaseMemoryInfo(memory_info);
+
+    return 0;
+}
+
+static const struct luaL_Reg memoryinfo_m [] = {
+    {"CreateTensorWithDataAsOrtValue", l_memoryinfo_CreateTensorWithDataAsOrtValue},
+    {"__gc", l_memoryinfo_release},
+    {NULL, NULL}
+};
+
+/* Оставшиеся классы
+ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
+ORT_RUNTIME_CLASS(IoBinding);
+ORT_RUNTIME_CLASS(Value);
+ORT_RUNTIME_CLASS(RunOptions);
+ORT_RUNTIME_CLASS(TypeInfo);
+ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
+ORT_RUNTIME_CLASS(CustomOpDomain);
+ORT_RUNTIME_CLASS(MapTypeInfo);
+ORT_RUNTIME_CLASS(SequenceTypeInfo);
+ORT_RUNTIME_CLASS(ModelMetadata);
+ORT_RUNTIME_CLASS(ThreadPoolParams);
+ORT_RUNTIME_CLASS(ThreadingOptions);
+ORT_RUNTIME_CLASS(ArenaCfg);
+ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
+ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
+*/
+
+
 int luaopen_luaort(lua_State *L) {
     g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (!g_ort) {
@@ -149,11 +253,19 @@ int luaopen_luaort(lua_State *L) {
     luaL_setfuncs(L, env_m, 0);
 
     luaL_newmetatable(L, "Ort.Session");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+    luaL_setfuncs(L, session_m, 0);
 
     luaL_newmetatable(L, "Ort.SessionOptions");
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     luaL_setfuncs(L, sessionoptions_m, 0);
+
+    luaL_newmetatable(L, "Ort.MemoryInfo");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+    luaL_setfuncs(L, memoryinfo_m, 0);
 
     // Регистрируем функцию в глобальной таблице Lua
     luaL_newlib(L, luaort);
