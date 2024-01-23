@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "lua.h"
 #include "lauxlib.h"
@@ -73,17 +74,22 @@ static int l_env_createsession (lua_State *L) {
     luaL_checktype(L, 3, LUA_TUSERDATA);
 
     OrtEnv* env = *(OrtEnv**)luaL_checkudata(L, 1, "Ort.Env");
-    const char* modelpath = lua_tostring(L, 2);
+    size_t pathlen;
+    const char* modelpath = lua_tolstring(L, 2, &pathlen);
+    const wchar_t* wmodelpath = calloc(pathlen+1, sizeof(wchar_t));
+    mbstowcs(wmodelpath, modelpath, pathlen);
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 3, "Ort.SessionOptions");
 
     OrtSession* session;
-    ORT_LUA_ERROR(L, g_ort->CreateSession(env, modelpath, session_options, &session));
+    ORT_LUA_ERROR(L, g_ort->CreateSession(env, wmodelpath, session_options, &session));
     if (session == NULL) { luaL_error(L, "Failed env creating."); }
 
     OrtSession** luaptr = (OrtSession**)lua_newuserdata(L, sizeof(OrtSession*));
     *luaptr = session;
     luaL_getmetatable(L, "Ort.Session");    
     lua_setmetatable(L, -2);
+
+    free(wmodelpath);
 
     return 1;
 }
@@ -190,18 +196,58 @@ static const struct luaL_Reg session_m [] = {
     {NULL, NULL}
 };
 
+static double *darray(lua_State *L, int index, size_t *count) {
+    *count = lua_rawlen(L, index);
+    double* array = calloc(*count, sizeof(double));
+    for (int i = 1; i <= *count; i++) {
+        lua_rawgeti(L, 2, i);
+        array[i-1] = (double)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+    }
+
+    return array;
+}
+
+static int64_t * iarray(lua_State *L, int index, size_t* count) {
+    *count = lua_rawlen(L, index);
+    int64_t *array = calloc(*count, sizeof(int64_t));
+    for (int i = 1; i <= *count; i++) {
+        lua_rawgeti(L, 2, i);
+        array[i-1] = (int64_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+    }
+
+    return array;
+}
 
 // MemoryInfo
 
-static int l_memoryinfo_CreateTensorWithDataAsOrtValue (lua_State *L) {
+static int l_memoryinfo_CreateTensor (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
-    OrtMemoryInfo* session = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
+    luaL_checktype(L, 2, LUA_TTABLE);
+    luaL_checktype(L, 3, LUA_TTABLE);
 
-    /*OrtValue* input_tensor = NULL;
-    ORT_LUA_ERROR(g_ort->CreateTensorWithDataAsOrtValue(memory_info, model_input, model_input_len, input_shape,
-                                                            input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
-                                                            &input_tensor));*/
-    //luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
+    OrtMemoryInfo* memory_info = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
+
+    size_t model_input_ele_count;
+    double *model_input = darray(L, 2, &model_input_ele_count);
+    const size_t model_input_len = model_input_ele_count * sizeof(double);
+
+    size_t input_shape_len;
+    int64_t *input_shape = iarray(L, 3, &input_shape_len);   //const int64_t input_shape[] = {1, 3, 720, 720};
+
+    OrtValue* input_tensor = NULL;
+    ORT_LUA_ERROR(L, g_ort->CreateTensorWithDataAsOrtValue(memory_info, model_input, model_input_len, input_shape,
+                                                            input_shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE,
+                                                            &input_tensor));
+    luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
+
+    OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
+    *luaptr = input_tensor;
+    luaL_getmetatable(L, "Ort.Value");    
+    lua_setmetatable(L, -2);
+
+    free(input_shape);
 
     return 1;
 }
@@ -216,15 +262,47 @@ static int l_memoryinfo_release (lua_State *L) {
 }
 
 static const struct luaL_Reg memoryinfo_m [] = {
-    {"CreateTensorWithDataAsOrtValue", l_memoryinfo_CreateTensorWithDataAsOrtValue},
+    {"CreateTensor", l_memoryinfo_CreateTensor},
     {"__gc", l_memoryinfo_release},
     {NULL, NULL}
 };
 
+
+// OrtValue
+
+static int l_istensor (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
+
+    int is_tensor;
+    g_ort->IsTensor(value, &is_tensor);
+
+    lua_pushboolean(L, is_tensor);
+
+    return 1;
+}
+
+static int l_value_release (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
+
+    void *data;
+    g_ort->GetTensorMutableData(value, &data); //TODO а так можно?
+    free(data);
+
+    g_ort->ReleaseValue(value);
+
+    return 0;
+}
+
+static const struct luaL_Reg value_m [] = {
+    {"isTensor", l_istensor},
+    {"__gc", l_value_release},
+    {NULL, NULL}
+};
+
 /* Оставшиеся классы
-ORT_RUNTIME_CLASS(Status);  // nullptr for Status* indicates success
 ORT_RUNTIME_CLASS(IoBinding);
-ORT_RUNTIME_CLASS(Value);
 ORT_RUNTIME_CLASS(RunOptions);
 ORT_RUNTIME_CLASS(TypeInfo);
 ORT_RUNTIME_CLASS(TensorTypeAndShapeInfo);
@@ -266,6 +344,11 @@ int luaopen_luaort(lua_State *L) {
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     luaL_setfuncs(L, memoryinfo_m, 0);
+
+    luaL_newmetatable(L, "Ort.Value");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -2, "__index");
+    luaL_setfuncs(L, value_m, 0);
 
     // Регистрируем функцию в глобальной таблице Lua
     luaL_newlib(L, luaort);
