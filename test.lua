@@ -1,4 +1,4 @@
-local Ort = require "luaort"
+local Ort = require "luaort" --[[@as Ort]]
 
 local Env = Ort.CreateEnv()
 print(Env)
@@ -9,15 +9,10 @@ print(SessionOptions)
 local Session = Env:CreateSession("candy.onnx", SessionOptions)
 print(Session)
 
-local mi = Ort.CreateMemoryInfo()
+local mi = Ort.CreateCPUMemoryInfo("Arena", "Default")
 print(mi)
 
-local inputvalue = mi:CreateTensor({1, 2, 3}, {1,3,720,720})
+local inputvalue = mi:CreateTensor({1, 2, 3}, {1,3,720,720}, "FLOAT")
 print(inputvalue)
 
 print("is tensor:", inputvalue:isTensor())
-
-inputvalue = nil
-collectgarbage()
-
-while true do end
