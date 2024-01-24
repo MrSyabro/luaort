@@ -245,6 +245,9 @@ static int lort_session_run (lua_State *L) {
     luaL_getmetatable(L, "Ort.Value");    
     lua_setmetatable(L, -2);
 
+    free(input_names);
+    free(output_names);
+
     return 1;
 }
 
