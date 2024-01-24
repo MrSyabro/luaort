@@ -13,7 +13,7 @@ OrtStatus* onnx_status = (expr);                            \
 if (onnx_status != NULL) {                                  \
     const char* msg = g_ort->GetErrorMessage(onnx_status);  \
     g_ort->ReleaseStatus(onnx_status);                      \
-    luaL_error((L), "ORT: %s\n", msg);                      \
+    luaL_error((L), "[ORT] %s\n", msg);                      \
     return 0;                                               \
 }
 
@@ -206,9 +206,52 @@ static int lort_session_release(lua_State *L) {
     return 0;
 }
 
+static const char** sarray (lua_State *L, int index, size_t *count) {
+    *count = luaL_len(L, index);
+    const char** array = calloc(*count + 1, sizeof(char*));
+
+    for (int i = 1; i <= *count; i++) {
+        lua_rawgeti(L, index, i);
+        array[i - 1] = (char *)lua_tostring(L, -1);
+        lua_pop(L, 1);
+    }
+    array[*count + 1] = NULL;
+
+    return array;
+}
+
+static int lort_session_run (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    luaL_checktype(L, 2, LUA_TTABLE);
+    luaL_checktype(L, 3, LUA_TUSERDATA);
+    luaL_checktype(L, 4, LUA_TTABLE);
+
+    OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
+    size_t input_count;
+    const char** input_names = sarray(L, 2, &input_count);
+    OrtValue* input_tensor = *(OrtValue**)luaL_checkudata(L, 3, "Ort.Value");
+    size_t output_count;
+    const char** output_names = sarray(L, 4, &output_count);
+
+    OrtValue* output_tensor = NULL;
+    ORT_LUA_ERROR(L, g_ort->Run(session, NULL, (const char* const*)input_names, 
+                                    (const OrtValue* const*)&input_tensor,
+                                    input_count, (const char* const*)output_names,
+                                    output_count, &output_tensor));
+    luaL_argcheck(L, output_tensor != NULL, 1, "Failed runing");
+
+    OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
+    *luaptr = output_tensor;
+    luaL_getmetatable(L, "Ort.Value");    
+    lua_setmetatable(L, -2);
+
+    return 1;
+}
+
 static const struct luaL_Reg session_m [] = {
     {"GetInputCount", lort_session_GetInputCount},
     {"GetOutputCount", lort_session_GetOutputCount},
+    {"Run", lort_session_run},
     {"__gc", lort_session_release},
     {NULL, NULL}
 };
@@ -229,7 +272,7 @@ static int64_t * iarray(lua_State *L, int index, size_t* count) {
     *count = lua_rawlen(L, index);
     int64_t *array = calloc(*count, sizeof(int64_t));
     for (int i = 1; i <= *count; i++) {
-        lua_rawgeti(L, 2, i);
+        lua_rawgeti(L, index, i);
         array[i-1] = (int64_t)lua_tointeger(L, -1);
         lua_pop(L, 1);
     }
@@ -267,21 +310,23 @@ const static char* lort_tensort_elemennt_data_type [] = {
 
 static int lort_memoryinfo_CreateTensor (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
-    luaL_checktype(L, 2, LUA_TTABLE);
+    luaL_checktype(L, 2, LUA_TSTRING);
     luaL_checktype(L, 3, LUA_TTABLE);
     int element_data_type = luaL_checkoption(L, 4, "FLOAT", lort_tensort_elemennt_data_type);
 
     OrtMemoryInfo* memory_info = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
 
     size_t modelort_input_ele_count;
-    double *modelort_input = darray(L, 2, &modelort_input_ele_count);
-    const size_t modelort_input_len = modelort_input_ele_count * sizeof(double);
+    const char *modelort_input = luaL_checklstring(L, 2, &modelort_input_ele_count);
+
+    void *modelort_inputc = malloc(modelort_input_ele_count);
+    memcpy(modelort_inputc, modelort_input, modelort_input_ele_count);
 
     size_t input_shape_len;
-    int64_t *input_shape = iarray(L, 3, &input_shape_len);   //const int64_t input_shape[] = {1, 3, 720, 720};
+    int64_t *input_shape = iarray(L, 3, &input_shape_len);
 
     OrtValue* input_tensor = NULL;
-    ORT_LUA_ERROR(L, g_ort->CreateTensorWithDataAsOrtValue(memory_info, modelort_input, modelort_input_len, input_shape,
+    ORT_LUA_ERROR(L, g_ort->CreateTensorWithDataAsOrtValue(memory_info, modelort_inputc, modelort_input_ele_count, input_shape,
                                                             input_shape_len, element_data_type,
                                                             &input_tensor));
     luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");

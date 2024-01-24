@@ -48,6 +48,22 @@ end
 ---@class OrtSession
 Session = {}
 
+---@return number
+function Session:GetInputCount()
+end
+
+---@return number
+function Session:GetOutputCount()
+end
+
+---Run the model in an ::OrtSession
+---@param input_names string[]
+---@param input_tensor OrtValue
+---@param output_names string[]
+---@return OrtValue
+function Session:Run(input_names, input_tensor, output_names)
+end
+
 ---@class OrtSessionOptions
 SessionOptions = {}
 
@@ -62,7 +78,7 @@ end
 ---@class OrtMemoryInfo
 MemoryInfo = {}
 
----@param inputdata table
+---@param inputdata string
 ---@param inputshape table
 ---@param datatype TENSOR_DATA_ELEMENT_TYPE?
 ---@return OrtValue

@@ -1,18 +1,18 @@
 local Ort = require "luaort" --[[@as Ort]]
 
 local Env = Ort.CreateEnv()
-print(Env)
 
 local SessionOptions = Ort.CreateSessionOptions()
-print(SessionOptions)
 
 local Session = Env:CreateSession("candy.onnx", SessionOptions)
-print(Session)
+print("Session InputCount", Session:GetInputCount())
+print("Session OutputCount", Session:GetOutputCount())
 
 local mi = Ort.CreateCPUMemoryInfo("Arena", "Default")
-print(mi)
 
-local inputvalue = mi:CreateTensor({1, 2, 3}, {1,3,720,720}, "FLOAT")
-print(inputvalue)
+local inputvalue = mi:CreateTensor("testdata", {1,3,720,720}, "FLOAT")
+print("in is tensor:", inputvalue:isTensor())
 
-print("is tensor:", inputvalue:isTensor())
+local outputvalue = Session:Run({"inputImage"}, inputvalue, {"outputImage"})
+print("out isTensor:", outputvalue:isTensor())
+
