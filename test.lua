@@ -10,7 +10,7 @@ local Env = Ort.CreateEnv()
 
 local SessionOptions = Ort.CreateSessionOptions()
 
-local Session = Env:CreateSession("candy.onnx", SessionOptions)
+local Session = Env:CreateSession("la_muse.onnx", SessionOptions)
 print("Session InputCount", Session:GetInputCount())
 print("Session OutputCount", Session:GetOutputCount())
 
@@ -29,3 +29,5 @@ d = png.chw2hwc(d)
 print("data2 size", #d)
 
 png.write(d, w, h, "out.png")
+
+os.execute('start out.png')
