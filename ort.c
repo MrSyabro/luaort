@@ -143,7 +143,7 @@ static int lort_env_createsession (lua_State *L) {
     OrtEnv* env = *(OrtEnv**)luaL_checkudata(L, 1, "Ort.Env");
     size_t pathlen;
     const char* modelpath = lua_tolstring(L, 2, &pathlen);
-    const wchar_t* wmodelpath = calloc(pathlen+1, sizeof(wchar_t));
+    wchar_t* wmodelpath = (wchar_t*)calloc(pathlen+1, sizeof(wchar_t));
     mbstowcs(wmodelpath, modelpath, pathlen);
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 3, "Ort.SessionOptions");
 

@@ -16,7 +16,7 @@ static int l_hwc_to_chw (lua_State *L) {
     }
   }
   
-  lua_pushlstring(L, output_data, len * sizeof(float));
+  lua_pushlstring(L, (const char *)output_data, len * sizeof(float));
 
   return 1;
 }
@@ -53,11 +53,11 @@ static int l_read_image_file (lua_State *L) {
   if (png_image_begin_read_from_file(&image, input_file) == 0) {
     luaL_error(L, "Reading image file failed");
   }
-  const char* buffer;
+  char* buffer;
   image.format = PNG_FORMAT_BGR;
   size_t input_data_length = PNG_IMAGE_SIZE(image);
 
-  buffer = (const char*)malloc(input_data_length);
+  buffer = (char*)malloc(input_data_length);
   memset(buffer, 0, input_data_length);
   if (png_image_finish_read(&image, NULL /*background*/, buffer, 0 /*row_stride*/, NULL /*colormap*/) == 0) {
     luaL_error(L, "Finish reading image file failed");
