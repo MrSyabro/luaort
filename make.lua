@@ -6,6 +6,7 @@ local zlibpath = vcpkg .. "\\zlib_x64-windows"
 --local ortlibpath = "D:\\onnxruntime-win-x64-1.10.0"
 local ortlibpath = "D:\\onnxruntime-training-win-x64-1.16.3"
 
+-- [[
 lm:lua_dll "pngutils" {
     includes = {
         libpngpath .. "\\include",
@@ -21,15 +22,17 @@ lm:lua_dll "pngutils" {
     msvc = {
         flags = "/utf-8",
     },
-}
+}--]]
 
 lm:lua_dll "luaort" {
     includes = ortlibpath .. "\\include",
+    --includes = "D:\\onnxruntime\\include\\onnxruntime\\core\\session",
     linkdirs = ortlibpath .. "\\lib",
+    --linkdirs = "D:\\onnxbuild\\Release\\Release",
     links = "onnxruntime",
     sources = "ort.c",
     mode = "debug",
     msvc = {
         flags = "/utf-8",
-    },
+    }
 }
