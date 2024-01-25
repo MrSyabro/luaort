@@ -92,6 +92,10 @@ Value = {}
 function Value:isTensor()
 end
 
+---@return string rawdata
+function Value:GetData()
+end
+
 ---@class Ort
 Ort = {}
 

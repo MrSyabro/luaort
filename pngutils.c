@@ -1,53 +1,81 @@
-#include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <assert.h>
 #include "lua.h"
 #include "lauxlib.h"
 #include "png.h"
 
-void hwc_to_chw(const uint8_t* input, size_t h, size_t w, float** output, size_t* output_count) {
-  size_t stride = h * w;
-  *output_count = stride * 3;
-  float* output_data = (float*)malloc(*output_count * sizeof(float));
-  assert(output_data != NULL);
+static int l_hwc_to_chw (lua_State *L) {
+  size_t len;
+  const char* input = luaL_checklstring(L, 1, &len);
+  size_t stride = len / 3;
+
+  float* output_data = (float*)malloc(len * sizeof(float));
+  luaL_argcheck(L, output_data != NULL, 1, "Out of memory");
   for (size_t i = 0; i != stride; ++i) {
     for (size_t c = 0; c != 3; ++c) {
       output_data[c * stride + i] = input[i * 3 + c];
     }
   }
-  *output = output_data;
+  
+  lua_pushlstring(L, output_data, len * sizeof(float));
+
+  return 1;
 }
 
-int read_image_file(const char* input_file, size_t* height, size_t* width, float** out, size_t* output_count) {
+static int l_chw_to_hwc (lua_State *L) {
+  size_t len;
+  const float* input = (const float*)luaL_checklstring(L, 1, &len);
+  len = len / sizeof(float);
+  size_t stride = len / 3;
+
+  char* output_data = (char*)malloc(len);
+  luaL_argcheck(L, output_data != NULL, 1, "out of memry");
+  for (size_t c = 0; c != 3; ++c) {
+    size_t t = c * stride;
+    for (size_t i = 0; i != stride; ++i) {
+      float f = input[t + i];
+      if (f < 0.f || f > 255.0f) f = 0;
+      output_data[i * 3 + c] = (char)f;
+    }
+  }
+ 
+  lua_pushlstring(L, output_data, len);
+
+  return 1;
+}
+
+static int l_read_image_file (lua_State *L) {
+  const char* input_file = luaL_checkstring(L, 1);
+
   png_image image; /* The control structure used by libpng */
   /* Initialize the 'png_image' structure. */
   memset(&image, 0, (sizeof image));
   image.version = PNG_IMAGE_VERSION;
   if (png_image_begin_read_from_file(&image, input_file) == 0) {
-    return -1;
+    luaL_error(L, "Reading image file failed");
   }
-  uint8_t* buffer;
+  const char* buffer;
   image.format = PNG_FORMAT_BGR;
   size_t input_data_length = PNG_IMAGE_SIZE(image);
-  if (input_data_length != 720 * 720 * 3) {
-    printf("input_data_length:%zd\n", input_data_length);
-    return -1;
-  }
-  buffer = (uint8_t*)malloc(input_data_length);
+
+  buffer = (const char*)malloc(input_data_length);
   memset(buffer, 0, input_data_length);
   if (png_image_finish_read(&image, NULL /*background*/, buffer, 0 /*row_stride*/, NULL /*colormap*/) == 0) {
-    return -1;
+    luaL_error(L, "Finish reading image file failed");
   }
-  hwc_to_chw(buffer, image.height, image.width, out, output_count);
-  free(buffer);
-  *width = image.width;
-  *height = image.height;
-  return 0;
+  
+  lua_pushinteger(L, image.width);
+  lua_pushinteger(L, image.height);
+  lua_pushlstring(L, buffer, input_data_length);
+  return 3;
 }
 
-int write_image_file(uint8_t* model_output_bytes, unsigned int height,
-                     unsigned int width, const char* output_file){
+
+static int l_write_image_file (lua_State *L) {
+  const char* image_data = luaL_checkstring(L, 1);
+  unsigned int height = (unsigned int)luaL_checkinteger(L, 2);
+  unsigned int width = (unsigned int)luaL_checkinteger(L, 3);
+  const char* output_file = luaL_checkstring(L, 4);
+  
   png_image image;
   memset(&image, 0, (sizeof image));
   image.version = PNG_IMAGE_VERSION;
@@ -55,20 +83,24 @@ int write_image_file(uint8_t* model_output_bytes, unsigned int height,
   image.height = height;
   image.width = width;
   int ret = 0;
-  if (png_image_write_to_file(&image, output_file, 0 /*convert_to_8bit*/, model_output_bytes, 0 /*row_stride*/,
+  if (png_image_write_to_file(&image, output_file, 0 /*convert_to_8bit*/, image_data, 0 /*row_stride*/,
 			      NULL /*colormap*/) == 0) {
-    printf("write to '%s' failed:%s\n", output_file, image.message);
-    ret = -1;
+    luaL_error(L, "write to '%s' failed:%s\n", output_file, image.message);
   }
-  return ret;
+
+  return 0;
 }
 
-static const struct luaL_Reg luaort [] = {
-    {"read", lpu_createenv},
-    {"write", lpu_createsessionoptions},
+static const struct luaL_Reg luapngutils [] = {
+    {"read", l_read_image_file},
+    {"write", l_write_image_file},
+    {"hwc2chw", l_hwc_to_chw},
+    {"chw2hwc", l_chw_to_hwc},
     {NULL, NULL}
 };
 
 int luaopen_pngutils(lua_State *L) {
-    return 0;
+    luaL_newlib(L, luapngutils);
+
+    return 1;
 }

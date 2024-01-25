@@ -1,6 +1,6 @@
-#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "lua.h"
 #include "lauxlib.h"
@@ -13,8 +13,72 @@ OrtStatus* onnx_status = (expr);                            \
 if (onnx_status != NULL) {                                  \
     const char* msg = g_ort->GetErrorMessage(onnx_status);  \
     g_ort->ReleaseStatus(onnx_status);                      \
-    luaL_error((L), "[ORT] %s\n", msg);                      \
+    luaL_error((L), "[ORT] %s\n", msg);                     \
     return 0;                                               \
+}
+
+const static char* lort_tensort_elemennt_data_type [] = {
+    "UNDEFINED",
+    "FLOAT",
+    "UINT8",
+    "INT8",
+    "UINT16",
+    "INT16",
+    "INT32",
+    "INT64",
+    "STRING",
+    "BOOL",
+    "FLOAT16",
+    "DOUBLE",
+    "UINT32",
+    "UINT64",
+    "COMPLEX64",
+    "COMPLEX128",
+    "BFLOAT16",
+    
+    "FLOAT8E4M3FN",
+    "FLOAT8E4M3FNUZ",
+    "FLOAT8E5M2",
+    "FLOAT8E5M2FNUZ",
+    NULL
+};
+
+static const char* lort_AllocatorType [] = {
+    "Invalid",
+    "Device",
+    "Arena",
+    NULL
+};
+
+static const char* lort_MemType [] = {
+    "CPUInput",
+    "CPUOutput",
+    "Default",
+    NULL
+};
+
+static double *lort_todarray(lua_State *L, int index, size_t *count) {
+    *count = lua_rawlen(L, index);
+    double* array = calloc(*count, sizeof(double));
+    for (int i = 1; i <= *count; i++) {
+        lua_rawgeti(L, 2, i);
+        array[i-1] = (double)lua_tonumber(L, -1);
+        lua_pop(L, 1);
+    }
+
+    return array;
+}
+
+static int64_t * lort_toiarray(lua_State *L, int index, size_t* count) {
+    *count = lua_rawlen(L, index);
+    int64_t *array = calloc(*count, sizeof(int64_t));
+    for (int i = 1; i <= *count; i++) {
+        lua_rawgeti(L, index, i);
+        array[i-1] = (int64_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+    }
+
+    return array;
 }
 
 static int lort_createenv (lua_State *L) {
@@ -44,20 +108,6 @@ static int lort_createsessionoptions (lua_State *L) {
 
     return 1;
 }
-
-static const char* lort_AllocatorType [] = {
-    "Invalid",
-    "Device",
-    "Arena",
-    NULL
-};
-
-static const char* lort_MemType [] = {
-    "CPUInput",
-    "CPUOutput",
-    "Default",
-    NULL
-};
 
 static int lort_creatcpuememoryinfo (lua_State *L) {
     int allocator = luaL_checkoption(L, 1, "Device", lort_AllocatorType);
@@ -206,9 +256,9 @@ static int lort_session_release(lua_State *L) {
     return 0;
 }
 
-static const char** sarray (lua_State *L, int index, size_t *count) {
+static char** sarray (lua_State *L, int index, size_t *count) {
     *count = luaL_len(L, index);
-    const char** array = calloc(*count + 1, sizeof(char*));
+    char** array = calloc(*count + 1, sizeof(char*));
 
     for (int i = 1; i <= *count; i++) {
         lua_rawgeti(L, index, i);
@@ -228,10 +278,10 @@ static int lort_session_run (lua_State *L) {
 
     OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
     size_t input_count;
-    const char** input_names = sarray(L, 2, &input_count);
+    char** input_names = sarray(L, 2, &input_count);
     OrtValue* input_tensor = *(OrtValue**)luaL_checkudata(L, 3, "Ort.Value");
     size_t output_count;
-    const char** output_names = sarray(L, 4, &output_count);
+    char** output_names = sarray(L, 4, &output_count);
 
     OrtValue* output_tensor = NULL;
     ORT_LUA_ERROR(L, g_ort->Run(session, NULL, (const char* const*)input_names, 
@@ -245,9 +295,6 @@ static int lort_session_run (lua_State *L) {
     luaL_getmetatable(L, "Ort.Value");    
     lua_setmetatable(L, -2);
 
-    free(input_names);
-    free(output_names);
-
     return 1;
 }
 
@@ -259,57 +306,7 @@ static const struct luaL_Reg session_m [] = {
     {NULL, NULL}
 };
 
-static double *darray(lua_State *L, int index, size_t *count) {
-    *count = lua_rawlen(L, index);
-    double* array = calloc(*count, sizeof(double));
-    for (int i = 1; i <= *count; i++) {
-        lua_rawgeti(L, 2, i);
-        array[i-1] = (double)lua_tonumber(L, -1);
-        lua_pop(L, 1);
-    }
-
-    return array;
-}
-
-static int64_t * iarray(lua_State *L, int index, size_t* count) {
-    *count = lua_rawlen(L, index);
-    int64_t *array = calloc(*count, sizeof(int64_t));
-    for (int i = 1; i <= *count; i++) {
-        lua_rawgeti(L, index, i);
-        array[i-1] = (int64_t)lua_tointeger(L, -1);
-        lua_pop(L, 1);
-    }
-
-    return array;
-}
-
 // MemoryInfo
-
-const static char* lort_tensort_elemennt_data_type [] = {
-    "UNDEFINED",
-    "FLOAT",
-    "UINT8",
-    "INT8",
-    "UINT16",
-    "INT16",
-    "INT32",
-    "INT64",
-    "STRING",
-    "BOOL",
-    "FLOAT16",
-    "DOUBLE",
-    "UINT32",
-    "UINT64",
-    "COMPLEX64",
-    "COMPLEX128",
-    "BFLOAT16",
-    
-    "FLOAT8E4M3FN",
-    "FLOAT8E4M3FNUZ",
-    "FLOAT8E5M2",
-    "FLOAT8E5M2FNUZ",
-    NULL
-};
 
 static int lort_memoryinfo_CreateTensor (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
@@ -326,7 +323,7 @@ static int lort_memoryinfo_CreateTensor (lua_State *L) {
     memcpy(modelort_inputc, modelort_input, modelort_input_ele_count);
 
     size_t input_shape_len;
-    int64_t *input_shape = iarray(L, 3, &input_shape_len);
+    int64_t *input_shape = lort_toiarray(L, 3, &input_shape_len);
 
     OrtValue* input_tensor = NULL;
     ORT_LUA_ERROR(L, g_ort->CreateTensorWithDataAsOrtValue(memory_info, modelort_inputc, modelort_input_ele_count, input_shape,
@@ -362,7 +359,7 @@ static const struct luaL_Reg memoryinfo_m [] = {
 
 // OrtValue
 
-static int lort_istensor (lua_State *L) {
+static int lort_value_istensor (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
 
@@ -374,13 +371,53 @@ static int lort_istensor (lua_State *L) {
     return 1;
 }
 
-static int lort_value_release (lua_State *L) {
+static size_t getsize(ONNXTensorElementDataType datatype) {
+    switch (datatype)
+    {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return (sizeof(float)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return (sizeof(uint8_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return (sizeof(int8_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return (sizeof(uint16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return (sizeof(int16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return (sizeof(int32_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return (sizeof(int64_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return (sizeof(int16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return (sizeof(double)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return (sizeof(uint32_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return (sizeof(uint64_t)); break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int lort_value_getdata (lua_State *L) { // TODO сделать лучше размер данных
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
 
-    void *data;
-    g_ort->GetTensorMutableData(value, &data); //TODO а так можно?
-    free(data);
+    char* output_tensor_data = NULL;
+    ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(value, (void**)&output_tensor_data));
+
+    OrtTensorTypeAndShapeInfo* typeandshape = NULL;
+    g_ort->GetTensorTypeAndShape(value, &typeandshape);
+
+    size_t count;
+    g_ort->GetTensorShapeElementCount(typeandshape, &count);
+    ONNXTensorElementDataType datatype;
+    g_ort->GetTensorElementType(typeandshape, &datatype);
+
+    size_t sizeofel = getsize(datatype);
+
+    g_ort->ReleaseTensorTypeAndShapeInfo(typeandshape);
+
+    lua_pushlstring(L, output_tensor_data, count * sizeofel);
+
+    return 1;
+}
+
+static int lort_value_release (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
 
     g_ort->ReleaseValue(value);
 
@@ -388,7 +425,8 @@ static int lort_value_release (lua_State *L) {
 }
 
 static const struct luaL_Reg value_m [] = {
-    {"isTensor", lort_istensor},
+    {"isTensor", lort_value_istensor},
+    {"GetData", lort_value_getdata},
     {"__gc", lort_value_release},
     {NULL, NULL}
 };
