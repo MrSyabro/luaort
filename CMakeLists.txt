@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.5)	 # Проверка версии CMake.
 
 project(luaort C)			# Название проекта
 
-find_package(lua CONFIG REQUIRED)
+find_package(lua REQUIRED)
 find_package(PNG REQUIRED)
 
 add_library(luaort SHARED ort.c)	# Создание статической библиотеки с именем foo
