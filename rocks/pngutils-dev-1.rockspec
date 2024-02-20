@@ -1,4 +1,4 @@
-package = "luaort"
+package = "pngutils"
 version = "dev-1"
 source = {
    url = "git+https://git@github.com/MrSyabro/luaort.git",
@@ -15,11 +15,9 @@ dependencies = {
 build = {
    type = "builtin",
    modules = {
-      vec = {
-        sources = { "ort.c", },
-        libraries = {"onnxruntime"},
-        incdirs = {"$(ONNXRUNTIME_INCDIR)"},
-        libdirs = {"$(ONNXRUNTIME_LIBDIR)"}
+      pngutils = {
+        sources = { "pngutils.c", },
+        libraries = {"png"},
       }
    },
 }
