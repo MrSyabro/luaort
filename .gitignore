@@ -6,3 +6,4 @@ build
 /lua_modules
 /.luarocks
 luarocks
+.buildconfig
