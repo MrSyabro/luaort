@@ -21,9 +21,7 @@ build = {
    modules = {
       luaort = {
         sources = { "ort.c", },
-        libraries = {"onnxruntime"},
-        incdirs = {},
-        libdirs = {}
+        libraries = {"onnxruntime"}
       }
    },
 }
