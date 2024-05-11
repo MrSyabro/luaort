@@ -6,4 +6,5 @@ build
 /lua_modules
 /.luarocks
 luarocks
-.buildconfig
+.buildconfig/luarocks.bat
+/lua.bat

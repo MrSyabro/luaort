@@ -12,6 +12,10 @@ description = {
 dependencies = {
    "lua >= 5.2"
 }
+
+local png_incdir = "$(PNG_INCDIR)"
+local png_libdir = "$(PNG_LIBDIR)"
+
 build = {
    type = "builtin",
    modules = {
@@ -21,3 +25,8 @@ build = {
       }
    },
 }
+
+if png_incdir then
+   build.modules.pngutils.incdirs = {png_incdir}
+   build.modules.pngutils.libdirs = {png_libdir}
+end
