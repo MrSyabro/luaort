@@ -2,9 +2,10 @@ build
 .vscode
 *.onnx
 *.png/luarocks
-/lua
 /lua_modules
 /.luarocks
-luarocks
+/luarocks.bat
 .buildconfig/luarocks.bat
 /lua.bat
+*.o
+*.dll

@@ -13,20 +13,12 @@ dependencies = {
    "lua >= 5.2"
 }
 
-local ort_incdir = "$(ONNXRUNTIME_INCDIR)"
-local ort_libdir = "$(ONNXRUNTIME_LIBDIR)"
-
 build = {
    type = "builtin",
    modules = {
       luaort = {
-        sources = { "ort.c", },
+        sources = { "src/ort.c", },
         libraries = {"onnxruntime"}
       }
    },
 }
-
-if ort_incdir then
-   build.modules.luaort.incdirs = {ort_incdir}
-   build.modules.luaort.libdirs = {ort_libdir}
-end
