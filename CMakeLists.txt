@@ -4,15 +4,15 @@ cmake_minimum_required(VERSION 3.5)	 # Проверка версии CMake.
 
 project(luaort C)			# Название проекта
 
-find_package(Lua REQUIRED)
-find_package(PNG REQUIRED)
-
 add_library(luaort SHARED src/ort.c)
-target_include_directories(luaort PRIVATE ${ORT_INCLUDE_DIR})
+
+find_package(Lua REQUIRED)
+
 target_link_directories(luaort PRIVATE ${ORT_DIR})
+target_include_directories(luaort PRIVATE ${ORT_INCLUDE_DIR})
 target_link_libraries(luaort PRIVATE lua onnxruntime)
 
-add_library(pngutils SHARED src/pngutils.c)
-target_link_libraries(pngutils PRIVATE lua PNG::PNG)
-
-add_test(NAME ORTInference COMMAND lua test.lua)
+install(TARGETS luaort
+		RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}
+		LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX})

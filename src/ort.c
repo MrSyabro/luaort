@@ -447,7 +447,9 @@ ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 */
 
-
+#if defined(_WIN32) || defined(_WIN64)
+__declspec(dllexport)
+#endif
 int luaopen_luaort(lua_State *L) {
     g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     if (!g_ort) {
