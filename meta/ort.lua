@@ -1,16 +1,5 @@
 ---@meta
 
----@alias OrtAllocatorType
----| "Invalid"
----|>"Device"
----| "Arena"
-
----Memory types for allocated memory, execution provider specific types should be extended in each provider.
----@alias OrtMemType
----| "CPUInput"              --- Any CPU memory used by non-CPU execution provider
----| "CPUOutput"             --- CPU accessible memory outputted by non-CPU execution provider, i.e. CUDA_PINNED
----|>"Default"               --- The default allocator for execution provider
-
 ---@alias TENSOR_DATA_ELEMENT_TYPE
 ---| "UNDEFINED"
 ---|>"FLOAT"
@@ -26,14 +15,6 @@
 ---| "DOUBLE"
 ---| "UINT32"
 ---| "UINT64"
----| "COMPLEX64"
----| "COMPLEX128"
----| "BFLOAT16"
----|
----| "FLOAT8E4M3FN"
----| "FLOAT8E4M3FNUZ"
----| "FLOAT8E5M2"
----| "FLOAT8E5M2FNUZ"
 
 ---@class OrtEnv
 Env = {}
@@ -70,19 +51,38 @@ SessionOptions = {}
 function SessionOptions:AppendExecutionProvider_DML()
 end
 
+---@alias CudnnConvAlgoSearch
+---|>"Exhaustive" expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx
+---| "Heuristic" lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7
+---| "Default" default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM
+
+---@class CUDAProviderOptions
+---@field device_id number
+---@field cudnn_conv_algo_search CudnnConvAlgoSearch
+---@field gpu_mem_limit number CUDA memory limit (To use all possible memory pass in maximum size_t)
+---@field arena_extend_strategy number
+---@field do_copy_in_default_stream number
+---@field has_user_compute_stream number
+---@field tunable_op_enable number
+---@field tunable_op_tuning_enable number
+---@field tunable_op_max_tuning_duration_ms number
+
 ---Append CUDA provider to session options
 function SessionOptions:AppendExecutionProvider_CUDA()
 end
 
+---@alias OpenVINODeviceType
+---| "CPU_FP32"
+---| "CPU_FP16"
+---| "GPU_FP32"
+---| "GPU_FP16"
 
----@class OrtMemoryInfo
-MemoryInfo = {}
+---@class OpenVINOProviderOptions
+---@field device_type OpenVINODeviceType
 
----@param inputdata string
----@param inputshape table
----@param datatype TENSOR_DATA_ELEMENT_TYPE?
----@return OrtValue
-function MemoryInfo:CreateTensor(inputdata, inputshape, datatype)
+---Append OpenVINO provider to session options
+---@param config OpenVINOProviderOptions?
+function SessionOptions:AppendExecutionProvider_OpenVINO(config)
 end
 
 ---@class OrtValue
@@ -109,11 +109,11 @@ end
 function Ort.CreateSessionOptions()
 end
 
----Create an ::OrtMemoryInfo for CPU memory with OrtArenaAllocator and OrtMemTypeDefault
----@param allocator OrtAllocatorType?
----@param memorytype OrtMemType?
----@return OrtMemoryInfo
-function Ort.CreateCPUMemoryInfo(allocator, memorytype)
+---@param inputshape table
+---@param datatype TENSOR_DATA_ELEMENT_TYPE?
+---@param inputdata string?
+---@return OrtValue
+function Ort.CreateValue(inputshape, datatype, inputdata)
 end
 
 return Ort
