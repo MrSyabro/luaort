@@ -32,14 +32,6 @@ const static char* lort_tensort_elemennt_data_type [] = {
     "DOUBLE",
     "UINT32",
     "UINT64",
-    "COMPLEX64",
-    "COMPLEX128",
-    "BFLOAT16",
-    
-    "FLOAT8E4M3FN",
-    "FLOAT8E4M3FNUZ",
-    "FLOAT8E5M2",
-    "FLOAT8E5M2FNUZ",
     NULL
 };
 
@@ -109,18 +101,57 @@ static int lort_createsessionoptions (lua_State *L) {
     return 1;
 }
 
-static int lort_creatcpuememoryinfo (lua_State *L) {
-    int allocator = luaL_checkoption(L, 1, "Device", lort_AllocatorType);
-    int memorytype = luaL_checkoption(L, 2, "Default", lort_MemType);
+static int lort_createvalue (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+    int element_data_type = luaL_checkoption(L, 2, "FLOAT", lort_tensort_elemennt_data_type);
 
-    OrtMemoryInfo* memory_info;
-    ORT_LUA_ERROR(L, g_ort->CreateCpuMemoryInfo(allocator - 1, memorytype - 2, &memory_info));
+    if (!lua_isnoneornil(L, 3))
+        if (element_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+            luaL_checktype(L, 3, LUA_TSTRING);
+        } else {
+            luaL_checktype(L, 3, LUA_TSTRING);
+        }
 
-    OrtMemoryInfo** luaptr = (OrtMemoryInfo**)lua_newuserdata(L, sizeof(OrtMemoryInfo*));
-    *luaptr = memory_info;
+    size_t input_shape_len;
+    int64_t *input_shape = lort_toiarray(L, 1, &input_shape_len);
 
-    luaL_getmetatable(L, "Ort.MemoryInfo");    
+    OrtAllocator* default_allocator = NULL;
+    g_ort->GetAllocatorWithDefaultOptions(&default_allocator);
+
+    OrtValue* input_tensor = NULL;
+    ORT_LUA_ERROR(L, g_ort->CreateTensorAsOrtValue(default_allocator, input_shape, input_shape_len, element_data_type, &input_tensor));
+    luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
+
+    if (lua_istable(L, 3) && element_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+        int strings_count = (int)luaL_len(L, 3);
+
+        const char** s = calloc(sizeof(char* const*), strings_count);
+
+        for (int i = 1; i <= strings_count; i++) {
+            lua_geti(L, 3, i);
+            s[i] = lua_tostring(L, -1);
+            lua_pop(L, 1);
+        }
+
+        ORT_LUA_ERROR(L, g_ort->FillStringTensor(input_tensor, s, strings_count));
+
+        free(s);
+    } else if (lua_isstring(L, 3)) {
+        size_t modelort_input_ele_count;
+        const char *modelort_input = luaL_checklstring(L, 3, &modelort_input_ele_count);
+
+        void *modelort_inputc = NULL;
+        ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void**)&modelort_inputc));
+
+        memcpy(modelort_inputc, modelort_input, modelort_input_ele_count);
+    }
+
+    OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
+    *luaptr = input_tensor;
+    luaL_getmetatable(L, "Ort.Value");    
     lua_setmetatable(L, -2);
+
+    free(input_shape);
 
     return 1;
 }
@@ -128,7 +159,7 @@ static int lort_creatcpuememoryinfo (lua_State *L) {
 static const struct luaL_Reg luaort [] = {
     {"CreateEnv", lort_createenv},
     {"CreateSessionOptions", lort_createsessionoptions},
-    {"CreateCPUMemoryInfo", lort_creatcpuememoryinfo},
+    {"CreateValue", lort_createvalue},
     {NULL, NULL}
 };
 
@@ -191,6 +222,23 @@ static int lort_sessionoptions_AppendExecutionProvider_DML (lua_State *L) {
     return 0;
 }
 
+static int lort_sessionoptions_AppendExecutionProvider_OpenVINO (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 1, "Ort.SessionOptions");
+
+    OrtOpenVINOProviderOptions provider_options;
+    memset(&provider_options, 0, sizeof(provider_options));
+
+    if (lua_istable(L, 2)) {
+        lua_getfield(L, 2, "device_type");
+        provider_options.device_type = lua_tostring(L, -1);
+    }
+
+    ORT_LUA_ERROR(L, g_ort->SessionOptionsAppendExecutionProvider_OpenVINO(session_options, &provider_options));
+
+    return 0;
+}
+
 static int lort_sessionoptions_AppendExecutionProvider_CUDA (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 1, "Ort.SessionOptions");
@@ -206,6 +254,16 @@ static int lort_sessionoptions_AppendExecutionProvider_CUDA (lua_State *L) {
     return 0;
 }
 
+static int lort_sessionoptions_AppendExecutionProvider (lua_State *L) {
+    luaL_checktype(L, 1, LUA_TUSERDATA);
+    OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 1, "Ort.SessionOptions");
+    const char* provider_name = luaL_checkstring(L, 2);
+
+    //ORT_LUA_ERROR(L, g_ort->SessionOptionsAppendExecutionProvider(session_options));
+
+    return 0;
+}
+
 static int lort_sessionoptions_release (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 1, "Ort.SessionOptions");
@@ -218,6 +276,7 @@ static int lort_sessionoptions_release (lua_State *L) {
 static const struct luaL_Reg sessionoptions_m [] = {
     {"AppendExecutionProvider_DML", lort_sessionoptions_AppendExecutionProvider_DML},
     {"AppendExecutionProvider_CUDA", lort_sessionoptions_AppendExecutionProvider_CUDA},
+    {"AppendExecutionProvider_OpenVINO", lort_sessionoptions_AppendExecutionProvider_OpenVINO},
     {"__gc", lort_sessionoptions_release},
     {NULL, NULL}
 };
@@ -305,57 +364,6 @@ static const struct luaL_Reg session_m [] = {
     {"__gc", lort_session_release},
     {NULL, NULL}
 };
-
-// MemoryInfo
-
-static int lort_memoryinfo_CreateTensor (lua_State *L) {
-    luaL_checktype(L, 1, LUA_TUSERDATA);
-    luaL_checktype(L, 2, LUA_TSTRING);
-    luaL_checktype(L, 3, LUA_TTABLE);
-    int element_data_type = luaL_checkoption(L, 4, "FLOAT", lort_tensort_elemennt_data_type);
-
-    OrtMemoryInfo* memory_info = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
-
-    size_t modelort_input_ele_count;
-    const char *modelort_input = luaL_checklstring(L, 2, &modelort_input_ele_count);
-
-    void *modelort_inputc = malloc(modelort_input_ele_count);
-    memcpy(modelort_inputc, modelort_input, modelort_input_ele_count);
-
-    size_t input_shape_len;
-    int64_t *input_shape = lort_toiarray(L, 3, &input_shape_len);
-
-    OrtValue* input_tensor = NULL;
-    ORT_LUA_ERROR(L, g_ort->CreateTensorWithDataAsOrtValue(memory_info, modelort_inputc, modelort_input_ele_count, input_shape,
-                                                            input_shape_len, element_data_type,
-                                                            &input_tensor));
-    luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
-
-    OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
-    *luaptr = input_tensor;
-    luaL_getmetatable(L, "Ort.Value");    
-    lua_setmetatable(L, -2);
-
-    free(input_shape);
-
-    return 1;
-}
-
-static int lort_memoryinfo_release (lua_State *L) {
-    luaL_checktype(L, 1, LUA_TUSERDATA);
-    OrtMemoryInfo* memory_info = *(OrtMemoryInfo**)luaL_checkudata(L, 1, "Ort.MemoryInfo");
-
-    g_ort->ReleaseMemoryInfo(memory_info);
-
-    return 0;
-}
-
-static const struct luaL_Reg memoryinfo_m [] = {
-    {"CreateTensor", lort_memoryinfo_CreateTensor},
-    {"__gc", lort_memoryinfo_release},
-    {NULL, NULL}
-};
-
 
 // OrtValue
 
@@ -471,11 +479,6 @@ int luaopen_luaort(lua_State *L) {
     lua_pushvalue(L, -1);
     lua_setfield(L, -2, "__index");
     luaL_setfuncs(L, sessionoptions_m, 0);
-
-    luaL_newmetatable(L, "Ort.MemoryInfo");
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    luaL_setfuncs(L, memoryinfo_m, 0);
 
     luaL_newmetatable(L, "Ort.Value");
     lua_pushvalue(L, -1);
