@@ -29,12 +29,12 @@ end
 ---@class OrtSession
 Session = {}
 
----@return number
-function Session:GetInputCount()
+---@return string[]
+function Session:GetInputs()
 end
 
----@return number
-function Session:GetOutputCount()
+---@return string[]
+function Session:GetOutputs()
 end
 
 ---Run the model in an ::OrtSession

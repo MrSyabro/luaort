@@ -8,14 +8,16 @@
 
 const OrtApi* g_ort = NULL;
 
-#define ORT_LUA_ERROR(lua, expr)                            \
-OrtStatus* onnx_status = (expr);                            \
-if (onnx_status != NULL) {                                  \
-    const char* msg = g_ort->GetErrorMessage(onnx_status);  \
-    g_ort->ReleaseStatus(onnx_status);                      \
-    luaL_error((L), "[ORT] %s\n", msg);                     \
-    return 0;                                               \
-}
+#define ORT_LUA_ERROR(L, expr)                                \
+do {                                                            \
+OrtStatus* onnx_status = (expr);                                \
+    if (onnx_status != NULL) {                                  \
+        const char* msg = g_ort->GetErrorMessage(onnx_status);  \
+        g_ort->ReleaseStatus(onnx_status);                      \
+        luaL_error((L), "[ORT] %s\n", msg);                     \
+        return 0;                                               \
+    }                                                           \
+} while (0)
 
 const static char* lort_tensort_elemennt_data_type [] = {
     "UNDEFINED",
@@ -284,25 +286,53 @@ static const struct luaL_Reg sessionoptions_m [] = {
 
 // Session
 
-static int lort_session_GetInputCount(lua_State *L) {
+static int lort_session_GetInputs(lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
     
-    size_t count;
-    g_ort->SessionGetInputCount(session, &count);
+    OrtAllocator* allocator = NULL;
+    ORT_LUA_ERROR(L, g_ort->GetAllocatorWithDefaultOptions(&allocator));
 
-    lua_pushnumber(L, (int)count);
+    size_t count;
+    ORT_LUA_ERROR(L, g_ort->SessionGetInputCount(session, &count));
+
+    lua_createtable(L, (int)count, 0);
+
+    char* value;
+    for (size_t i = 0; i < count; i++) {
+        ORT_LUA_ERROR(L, g_ort->SessionGetInputName(session, i, allocator, &value));
+
+        lua_pushstring(L, value);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+
+        allocator->Free(allocator, value);
+    }
+
     return 1;
 }
 
-static int lort_session_GetOutputCount(lua_State *L) {
+static int lort_session_GetOutputs(lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
     
-    size_t count;
-    g_ort->SessionGetOutputCount(session, &count);
+    OrtAllocator* allocator = NULL;
+    ORT_LUA_ERROR(L, g_ort->GetAllocatorWithDefaultOptions(&allocator));
 
-    lua_pushnumber(L, (int)count);
+    size_t count;
+    ORT_LUA_ERROR(L, g_ort->SessionGetOutputCount(session, &count));
+
+    lua_createtable(L, (int)count, 0);
+
+    char* value;
+    for (size_t i = 0; i < count; i++) {
+        ORT_LUA_ERROR(L, g_ort->SessionGetOutputName(session, i, allocator, &value));
+
+        lua_pushstring(L, value);
+        lua_rawseti(L, -2, (lua_Integer)i + 1);
+
+        allocator->Free(allocator, value);
+    }
+
     return 1;
 }
 
@@ -358,8 +388,8 @@ static int lort_session_run (lua_State *L) {
 }
 
 static const struct luaL_Reg session_m [] = {
-    {"GetInputCount", lort_session_GetInputCount},
-    {"GetOutputCount", lort_session_GetOutputCount},
+    {"GetInputs", lort_session_GetInputs},
+    {"GetOutputs", lort_session_GetOutputs},
     {"Run", lort_session_run},
     {"__gc", lort_session_release},
     {NULL, NULL}
