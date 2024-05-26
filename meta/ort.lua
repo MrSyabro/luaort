@@ -37,12 +37,24 @@ end
 function Session:GetOutputs()
 end
 
+---@param index integer
+---@return string
+---@return integer[] dimensions
+function Session:GetInputType(index)
+end
+
+---@param index integer
+---@return string
+---@return integer[] dimensions
+function Session:GetOutputType(index)
+end
+
 ---Run the model in an ::OrtSession
 ---@param input_names string[]
----@param input_tensor OrtValue
+---@param input_tensors OrtValue[]
 ---@param output_names string[]
----@return OrtValue
-function Session:Run(input_names, input_tensor, output_names)
+---@return OrtValue[]
+function Session:Run(input_names, input_tensors, output_names)
 end
 
 ---@class OrtSessionOptions
