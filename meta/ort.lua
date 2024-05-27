@@ -97,6 +97,11 @@ end
 function SessionOptions:AppendExecutionProvider_OpenVINO(config)
 end
 
+---@param provider_name string
+---@param provider_options table<string, string|number>
+function SessionOptions:AppendExecutionProvider(provider_name, provider_options)
+end
+
 ---@class OrtValue
 Value = {}
 

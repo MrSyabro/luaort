@@ -258,11 +258,30 @@ static int lort_sessionoptions_AppendExecutionProvider_CUDA (lua_State *L) {
 
 static int lort_sessionoptions_AppendExecutionProvider (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
+    luaL_checktype(L, 3, LUA_TTABLE);
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 1, "Ort.SessionOptions");
     const char* provider_name = luaL_checkstring(L, 2);
+    size_t options = 16;
+    const char** keys = calloc(options, sizeof(char*));
+    const char** values = calloc(options, sizeof(char*));
 
-    //ORT_LUA_ERROR(L, g_ort->SessionOptionsAppendExecutionProvider(session_options));
+    int index = 0;
+    lua_pushnil(L);
+    while(lua_next(L, 3) != 0) {
+        if (index > options) {
+            options = options * 2;
+            keys = realloc(keys, options * sizeof(char*));
+            values = realloc(values, options * sizeof(char*));
+        }
+        keys[index] = lua_tostring(L, -2);
+        values[index] = lua_tostring(L, -1);
+        index++;
+        lua_pop(L, 1);
+    }
+    ORT_LUA_ERROR(L, g_ort->SessionOptionsAppendExecutionProvider(session_options, provider_name, keys, values, index));
 
+    free(keys);
+    free(values);
     return 0;
 }
 
@@ -279,6 +298,7 @@ static const struct luaL_Reg sessionoptions_m [] = {
     {"AppendExecutionProvider_DML", lort_sessionoptions_AppendExecutionProvider_DML},
     {"AppendExecutionProvider_CUDA", lort_sessionoptions_AppendExecutionProvider_CUDA},
     {"AppendExecutionProvider_OpenVINO", lort_sessionoptions_AppendExecutionProvider_OpenVINO},
+    {"AppendExecutionProvider", lort_sessionoptions_AppendExecutionProvider},
     {"__gc", lort_sessionoptions_release},
     {NULL, NULL}
 };
