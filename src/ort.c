@@ -51,18 +51,6 @@ static const char* lort_MemType [] = {
     NULL
 };
 
-static double *lort_todarray(lua_State *L, int index, size_t *count) {
-    *count = lua_rawlen(L, index);
-    double* array = calloc(*count, sizeof(double));
-    for (int i = 1; i <= *count; i++) {
-        lua_rawgeti(L, 2, i);
-        array[i-1] = (double)lua_tonumber(L, -1);
-        lua_pop(L, 1);
-    }
-
-    return array;
-}
-
 static int64_t * lort_toiarray(lua_State *L, int index, size_t* count) {
     *count = lua_rawlen(L, index);
     int64_t *array = calloc(*count, sizeof(int64_t));
@@ -107,12 +95,7 @@ static int lort_createvalue (lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     int element_data_type = luaL_checkoption(L, 2, "FLOAT", lort_tensort_elemennt_data_type);
 
-    if (!lua_isnoneornil(L, 3))
-        if (element_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-            luaL_checktype(L, 3, LUA_TSTRING);
-        } else {
-            luaL_checktype(L, 3, LUA_TSTRING);
-        }
+    if (!lua_isnoneornil(L, 3)) luaL_checktype(L, 3, LUA_TSTRING);
 
     size_t input_shape_len;
     int64_t *input_shape = lort_toiarray(L, 1, &input_shape_len);
@@ -365,7 +348,7 @@ static int lort_session_GetInputType(lua_State *L) {
     ORT_LUA_ERROR(L, g_ort->SessionGetInputTypeInfo(session, index - 1, &type_info));
 
     OrtTensorTypeAndShapeInfo *tensor_info = NULL;
-    ORT_LUA_ERROR(L, g_ort->CastTypeInfoToTensorInfo(type_info, &tensor_info));
+    ORT_LUA_ERROR(L, g_ort->CastTypeInfoToTensorInfo(type_info, (const OrtTensorTypeAndShapeInfo**)&tensor_info));
 
     ONNXTensorElementDataType type;
     ORT_LUA_ERROR(L, g_ort->GetTensorElementType(tensor_info, &type));
@@ -398,7 +381,7 @@ static int lort_session_GetOutputType(lua_State *L) {
     ORT_LUA_ERROR(L, g_ort->SessionGetOutputTypeInfo(session, index - 1, &type_info));
 
     OrtTensorTypeAndShapeInfo *tensor_info = NULL;
-    ORT_LUA_ERROR(L, g_ort->CastTypeInfoToTensorInfo(type_info, &tensor_info));
+    ORT_LUA_ERROR(L, g_ort->CastTypeInfoToTensorInfo(type_info, (const OrtTensorTypeAndShapeInfo**)&tensor_info));
 
     ONNXTensorElementDataType type;
     ORT_LUA_ERROR(L, g_ort->GetTensorElementType(tensor_info, &type));
@@ -431,57 +414,63 @@ static int lort_session_release(lua_State *L) {
     return 0;
 }
 
-static const char** sarray (lua_State *L, int index, size_t *count) {
-    *count = luaL_len(L, index);
-    const char** array = calloc(*count + 1, sizeof(char*));
-
-    for (int i = 1; i <= *count; i++) {
-        lua_rawgeti(L, index, i);
-        array[i - 1] = (char *)lua_tostring(L, -1);
-        lua_pop(L, 1);
-    }
-    array[*count + 1] = NULL;
-
-    return array;
-}
-
 static int lort_session_run (lua_State *L) {
     luaL_checktype(L, 1, LUA_TUSERDATA);
     luaL_checktype(L, 2, LUA_TTABLE);
-    luaL_checktype(L, 3, LUA_TTABLE);
-    luaL_checktype(L, 4, LUA_TTABLE);
-
     OrtSession* session = *(OrtSession**)luaL_checkudata(L, 1, "Ort.Session");
+    OrtAllocator* allocator = NULL;
     size_t input_count;
-    const char** input_names = sarray(L, 2, &input_count);
+    size_t output_count;
 
-    int len = (int)luaL_len(L, 3);
-    luaL_argcheck(L, len == (int)input_count, 3, "input count mismatch");
+    ORT_LUA_ERROR(L, g_ort->GetAllocatorWithDefaultOptions(&allocator));
+    ORT_LUA_ERROR(L, g_ort->SessionGetInputCount(session, &input_count));
+    ORT_LUA_ERROR(L, g_ort->SessionGetOutputCount(session, &output_count));
+
+    const char** input_names = calloc(input_count, sizeof(char*));
+    const char** output_names = calloc(output_count, sizeof(char*));
     const OrtValue** input_tensors = calloc(input_count, sizeof(OrtValue*));
-    for (size_t i = 0; i < input_count; i++) {
-        lua_rawgeti(L, 3, (lua_Integer)i + 1);
-        input_tensors[i] = *(OrtValue**)luaL_checkudata(L, -1, "Ort.Value");
+    OrtValue** output_tensors = calloc(output_count, sizeof(OrtValue*));
+    
+    int index = 0;
+    lua_pushnil(L);
+    while (lua_next(L, 2) != 0) {
+        if (index > input_count) {
+            free(input_names);
+            free(output_names);
+            free(input_tensors);
+            free(output_tensors);
+            luaL_error(L, "Input count mistmatch");
+            return 0;
+        }
+        input_tensors[index] = *(OrtValue**)luaL_checkudata(L, -1, "Ort.Value");
+        input_names[index] = lua_tostring(L, -2);
+        index++;
         lua_pop(L, 1);
     }
-    size_t output_count;
-    const char** output_names = sarray(L, 4, &output_count);
+    lua_pop(L, 1);
 
-    const OrtValue** output_tensors = calloc(output_count, sizeof(OrtValue*));
+    for (size_t i = 0; i < output_count; i++) {
+        ORT_LUA_ERROR(L, g_ort->SessionGetOutputName(session, i, allocator, (char **)output_names + i));
+    }
+
     ORT_LUA_ERROR(L, g_ort->Run(session, NULL, input_names, 
                                     input_tensors,
-                                    input_count, output_names,
+                                    index, output_names,
                                     output_count, output_tensors));
     luaL_argcheck(L, output_tensors != NULL, 1, "Failed runing");
 
     lua_createtable(L, (int)output_count, 0);
     for (int i = 0; i < output_count; i++) {
-        const OrtValue** luaptr = (const OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
+        const OrtValue** luaptr = (const OrtValue **)lua_newuserdata(L, sizeof(OrtValue*));
         *luaptr = output_tensors[i];
         luaL_getmetatable(L, "Ort.Value");    
         lua_setmetatable(L, -2);
-        lua_rawseti(L, -2, i + 1);
+        lua_setfield(L, -2, output_names[i]);
+        allocator->Free(allocator, (void *)output_names[i]);
     }
 
+    free(input_names);
+    free(output_names);
     free(input_tensors);
     free(output_tensors);
     return 1;

@@ -50,11 +50,9 @@ function Session:GetOutputType(index)
 end
 
 ---Run the model in an ::OrtSession
----@param input_names string[]
----@param input_tensors OrtValue[]
----@param output_names string[]
----@return OrtValue[]
-function Session:Run(input_names, input_tensors, output_names)
+---@param input_tensors table<string, OrtValue>
+---@return table<string, OrtValue>
+function Session:Run(input_tensors)
 end
 
 ---@class OrtSessionOptions
