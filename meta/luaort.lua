@@ -126,7 +126,7 @@ end
 
 ---@param inputshape table
 ---@param datatype TENSOR_DATA_ELEMENT_TYPE?
----@param inputdata string?
+---@param inputdata string|number[]|string[]?
 ---@return OrtValue
 function Ort.CreateValue(inputshape, datatype, inputdata)
 end

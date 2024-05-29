@@ -51,12 +51,34 @@ static const char* lort_MemType [] = {
     NULL
 };
 
-static int64_t * lort_toiarray(lua_State *L, int index, size_t* count) {
+static size_t getsize(ONNXTensorElementDataType datatype) {
+    switch (datatype)
+    {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return (sizeof(float)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return (sizeof(uint8_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return (sizeof(int8_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return (sizeof(uint16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return (sizeof(int16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return (sizeof(int32_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return (sizeof(int64_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return (sizeof(int16_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return (sizeof(double)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return (sizeof(uint32_t)); break;
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return (sizeof(uint64_t)); break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int64_t * lort_toiarray(lua_State *L, int index, size_t* count, int64_t* elements_count) {
     *count = lua_rawlen(L, index);
     int64_t *array = calloc(*count, sizeof(int64_t));
+    *elements_count = 1;
     for (int i = 1; i <= *count; i++) {
         lua_rawgeti(L, index, i);
         array[i-1] = (int64_t)lua_tointeger(L, -1);
+        *elements_count *= array[i-1];
         lua_pop(L, 1);
     }
 
@@ -95,40 +117,75 @@ static int lort_createvalue (lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     int element_data_type = luaL_checkoption(L, 2, "FLOAT", lort_tensort_elemennt_data_type);
 
-    if (!lua_isnoneornil(L, 3)) luaL_checktype(L, 3, LUA_TSTRING);
+    if (!lua_isnoneornil(L, 3)) {
+        if (!lua_istable(L, 3) && !lua_isstring(L, 3)) luaL_error(L, "arg 3 must be table or string");
+    }
 
     size_t input_shape_len;
-    int64_t *input_shape = lort_toiarray(L, 1, &input_shape_len);
+    int64_t elements_count;
+    int64_t *input_shape = lort_toiarray(L, 1, &input_shape_len, &elements_count);
 
     OrtAllocator* default_allocator = NULL;
     g_ort->GetAllocatorWithDefaultOptions(&default_allocator);
 
     OrtValue* input_tensor = NULL;
     ORT_LUA_ERROR(L, g_ort->CreateTensorAsOrtValue(default_allocator, input_shape, input_shape_len, element_data_type, &input_tensor));
-    luaL_argcheck(L, input_tensor != NULL, 1, "Failed creting tensor");
+    luaL_argcheck(L, input_tensor != NULL, 1, "Failed creating tensor");
 
-    if (lua_istable(L, 3) && element_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-        int strings_count = (int)luaL_len(L, 3);
+    if (lua_istable(L, 3)) {
+        if (element_data_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
+            int strings_count = (int)luaL_len(L, 3);
 
-        const char** s = calloc(sizeof(char* const*), strings_count);
+            const char** s = calloc(sizeof(char* const*), strings_count);
 
-        for (int i = 1; i <= strings_count; i++) {
-            lua_geti(L, 3, i);
-            s[i] = lua_tostring(L, -1);
-            lua_pop(L, 1);
+            for (int i = 1; i <= strings_count; i++) {
+                lua_geti(L, 3, i);
+                s[i] = lua_tostring(L, -1);
+                lua_pop(L, 1);
+            }
+
+            ORT_LUA_ERROR(L, g_ort->FillStringTensor(input_tensor, s, strings_count));
+
+            free(s);
+        } else {
+            lua_Integer modelort_input_ele_count = luaL_len(L, 3);
+            float* modelort_inputc = NULL;
+            ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void **)&modelort_inputc));
+            lua_Integer count = (lua_Integer)__min(modelort_input_ele_count, elements_count);
+
+            for (lua_Integer i = 0; i < count; i++) {
+                lua_geti(L, 3, i + 1);
+                if (lua_isnumber(L, -1) == 0) {
+                    g_ort->ReleaseValue(input_tensor);
+                    luaL_error(L, "Data must be number table");
+                    return 0;
+                }
+                
+                lua_Number el = lua_tonumber(L, -1);
+                switch (element_data_type)
+                {
+                case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+                    modelort_inputc[i] = (float) el;
+                    break;
+                
+                default:
+                    ((float*)modelort_inputc)[i] = (float) el;
+                    break;
+                }
+                lua_pop(L, 1);
+            }
         }
-
-        ORT_LUA_ERROR(L, g_ort->FillStringTensor(input_tensor, s, strings_count));
-
-        free(s);
     } else if (lua_isstring(L, 3)) {
         size_t modelort_input_ele_count;
         const char *modelort_input = luaL_checklstring(L, 3, &modelort_input_ele_count);
 
-        void *modelort_inputc = NULL;
-        ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void**)&modelort_inputc));
+        char *modelort_inputc = NULL;
+        ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void **)&modelort_inputc));
 
-        memcpy(modelort_inputc, modelort_input, modelort_input_ele_count);
+        size_t tensor_size = getsize(element_data_type) * elements_count;
+        size_t count = __min(tensor_size, modelort_input_ele_count);
+
+        memcpy(modelort_inputc, modelort_input, count);
     }
 
     OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
@@ -498,26 +555,6 @@ static int lort_value_istensor (lua_State *L) {
     lua_pushboolean(L, is_tensor);
 
     return 1;
-}
-
-static size_t getsize(ONNXTensorElementDataType datatype) {
-    switch (datatype)
-    {
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: return (sizeof(float)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8: return (sizeof(uint8_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: return (sizeof(int8_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16: return (sizeof(uint16_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: return (sizeof(int16_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: return (sizeof(int32_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: return (sizeof(int64_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: return (sizeof(int16_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: return (sizeof(double)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32: return (sizeof(uint32_t)); break;
-    case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64: return (sizeof(uint64_t)); break;
-    default:
-        break;
-    }
-    return 0;
 }
 
 static int lort_value_getdata (lua_State *L) { // TODO сделать лучше размер данных
