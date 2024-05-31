@@ -107,7 +107,7 @@ Value = {}
 function Value:isTensor()
 end
 
----@return string rawdata
+---@return table dataaray
 function Value:GetData()
 end
 
@@ -126,7 +126,7 @@ end
 
 ---@param inputshape table
 ---@param datatype TENSOR_DATA_ELEMENT_TYPE?
----@param inputdata string|number[]|string[]?
+---@param inputdata number[]|string[]?
 ---@return OrtValue
 function Ort.CreateValue(inputshape, datatype, inputdata)
 end

@@ -115,11 +115,8 @@ static int lort_createsessionoptions (lua_State *L) {
 
 static int lort_createvalue (lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
+    luaL_checktype(L, 3, LUA_TTABLE);
     int element_data_type = luaL_checkoption(L, 2, "FLOAT", lort_tensort_elemennt_data_type);
-
-    if (!lua_isnoneornil(L, 3)) {
-        if (!lua_istable(L, 3) && !lua_isstring(L, 3)) luaL_error(L, "arg 3 must be table or string");
-    }
 
     size_t input_shape_len;
     int64_t elements_count;
@@ -149,7 +146,7 @@ static int lort_createvalue (lua_State *L) {
             free(s);
         } else {
             lua_Integer modelort_input_ele_count = luaL_len(L, 3);
-            float* modelort_inputc = NULL;
+            char* modelort_inputc = NULL;
             ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void **)&modelort_inputc));
             lua_Integer count = (lua_Integer)__min(modelort_input_ele_count, elements_count);
 
@@ -165,27 +162,20 @@ static int lort_createvalue (lua_State *L) {
                 switch (element_data_type)
                 {
                 case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-                    modelort_inputc[i] = (float) el;
+                    ((float*)modelort_inputc)[i] = (float) el;
+                    break;
+
+                case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+                    ((double*)modelort_inputc)[i] = (double) el;
                     break;
                 
                 default:
-                    ((float*)modelort_inputc)[i] = (float) el;
+                    luaL_error(L, "Not implemented tensor type %i", (int)element_data_type);
                     break;
                 }
                 lua_pop(L, 1);
             }
         }
-    } else if (lua_isstring(L, 3)) {
-        size_t modelort_input_ele_count;
-        const char *modelort_input = luaL_checklstring(L, 3, &modelort_input_ele_count);
-
-        char *modelort_inputc = NULL;
-        ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void **)&modelort_inputc));
-
-        size_t tensor_size = getsize(element_data_type) * elements_count;
-        size_t count = __min(tensor_size, modelort_input_ele_count);
-
-        memcpy(modelort_inputc, modelort_input, count);
     }
 
     OrtValue** luaptr = (OrtValue**)lua_newuserdata(L, sizeof(OrtValue*));
@@ -561,9 +551,6 @@ static int lort_value_getdata (lua_State *L) { // TODO сделать лучше
     luaL_checktype(L, 1, LUA_TUSERDATA);
     OrtValue* value = *(OrtValue**)luaL_checkudata(L, 1, "Ort.Value");
 
-    char* output_tensor_data = NULL;
-    ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(value, (void**)&output_tensor_data));
-
     OrtTensorTypeAndShapeInfo* typeandshape = NULL;
     ORT_LUA_ERROR(L, g_ort->GetTensorTypeAndShape(value, &typeandshape));
 
@@ -572,11 +559,36 @@ static int lort_value_getdata (lua_State *L) { // TODO сделать лучше
     ONNXTensorElementDataType datatype;
     ORT_LUA_ERROR(L, g_ort->GetTensorElementType(typeandshape, &datatype));
 
-    size_t sizeofel = getsize(datatype);
+    //size_t sizeofel = getsize(datatype);
+
+    char* output_tensor_data = NULL;
+    ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(value, (void**)&output_tensor_data));
+
+    lua_createtable(L, count, 2); // резервируем под поля для записи в пнг
+
+    switch (datatype)
+    {
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+        for (size_t i = 0; i < count; ++i) {
+            float d = ((float*)output_tensor_data)[i];
+            lua_pushnumber(L, d);
+            lua_rawseti(L, -2, (lua_Integer)(i + 1));
+        }
+        break;
+
+    case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+        for (size_t i = 0; i < count; ++i) {
+            lua_pushnumber(L, ((double*)output_tensor_data)[i]);
+            lua_rawseti(L, -2, (lua_Integer)(i + 1));
+        }
+        break;
+    
+    default:
+        luaL_error(L, "Not implemented tensor type %i", (int)datatype);
+        break;
+    }
 
     g_ort->ReleaseTensorTypeAndShapeInfo(typeandshape);
-
-    lua_pushlstring(L, output_tensor_data, count * sizeofel);
 
     return 1;
 }
