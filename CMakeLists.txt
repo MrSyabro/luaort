@@ -8,8 +8,8 @@ add_library(luaort SHARED src/ort.c)
 
 find_package(Lua REQUIRED)
 
-target_link_directories(luaort PRIVATE ${ONNXRUNTIME_LIBRARIES})
-target_include_directories(luaort PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
+target_link_directories(luaort PRIVATE ${ORT_DIR})
+target_include_directories(luaort PRIVATE ${ORT_INCLUDE_DIR})
 target_link_libraries(luaort PRIVATE lua onnxruntime)
 
 install(TARGETS luaort

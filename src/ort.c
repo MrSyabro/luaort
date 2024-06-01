@@ -148,7 +148,7 @@ static int lort_createvalue (lua_State *L) {
             lua_Integer modelort_input_ele_count = luaL_len(L, 3);
             char* modelort_inputc = NULL;
             ORT_LUA_ERROR(L, g_ort->GetTensorMutableData(input_tensor, (void **)&modelort_inputc));
-            lua_Integer count = (lua_Integer)__min(modelort_input_ele_count, elements_count);
+            lua_Integer count = (lua_Integer)(modelort_input_ele_count < elements_count ? modelort_input_ele_count : elements_count);
 
             for (lua_Integer i = 0; i < count; i++) {
                 lua_geti(L, 3, i + 1);
@@ -211,7 +211,7 @@ static int lort_env_createsession (lua_State *L) {
     OrtSessionOptions* session_options = *(OrtSessionOptions**)luaL_checkudata(L, 3, "Ort.SessionOptions");
 
     OrtSession* session;
-    ORT_LUA_ERROR(L, g_ort->CreateSession(env, wmodelpath, session_options, &session));
+    ORT_LUA_ERROR(L, g_ort->CreateSession(env, (const char *)wmodelpath, session_options, &session));
     if (session == NULL) { luaL_error(L, "Failed env creating."); }
 
     OrtSession** luaptr = (OrtSession**)lua_newuserdata(L, sizeof(OrtSession*));
